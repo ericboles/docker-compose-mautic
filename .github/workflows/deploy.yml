@@ -157,10 +157,10 @@ jobs:
     - name: Download setup-dc.log from Server
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-        chmod 600 ~/.ssh/id_ed25519
-        scp -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 root@104.248.239.170:/var/log/setup-dc.log ./setup-dc.log
-        rm -f ~/.ssh/id_ed25519
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa root@${{ env.ip }}:/var/log/setup-dc.log ./setup-dc.log
+        rm -f ~/.ssh/id_rsa
       shell: bash
 
     - name: Upload setup-dc.log as Artifact
