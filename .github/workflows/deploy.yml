@@ -131,7 +131,6 @@ jobs:
         if [ ! -z "${{ vars.DOMAIN }}" ]; then
           echo "DOMAIN_NAME=${{ vars.DOMAIN }}" >> deploy.env
         fi
-        echo "MAUTIC_PLUGINS=cyberwork/mautic-amazon-ses" >> deploy.env
         cat deploy.env # debug
       env:
         EMAIL_ADDRESS: ${{ vars.EMAIL_ADDRESS }}
