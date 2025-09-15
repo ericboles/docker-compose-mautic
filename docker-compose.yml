@@ -26,9 +26,7 @@ services:
       - default
 
   mautic_web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: mautic/mautic:${MAUTIC_VERSION:-6.0.5-apache}
     links:
       - db:mysql
     ports:
@@ -52,9 +50,7 @@ services:
       - default
 
   mautic_cron:
-      build:
-        context: .
-        dockerfile: Dockerfile
+      image: mautic/mautic:${MAUTIC_VERSION:-6.0.5-apache}
       links:
         - db:mysql
       volumes: *mautic-volumes
@@ -69,9 +65,7 @@ services:
         - default
 
   mautic_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: mautic/mautic:${MAUTIC_VERSION:-6.0.5-apache}
     links:
       - db:mysql
     volumes: *mautic-volumes

@@ -60,23 +60,27 @@ jobs:
 
     - name: Create VPS if it doesn't exist
       run: |
-        if ! doctl compute droplet list | grep -q 'mautic-vps'; then
-          doctl compute droplet create mautic-vps --image docker-20-04 --size s-1vcpu-1gb --region nyc1 --ssh-keys ${{ secrets.DIGITALOCEAN_SSH_FINGERPRINT }} --wait --user-data-file setup-vps.sh --enable-monitoring
+        VPS_NAME="${{ vars.VPS_NAME || 'mautic-vps' }}"
+        echo "Using VPS name: $VPS_NAME"
+        if ! doctl compute droplet list | grep -q "$VPS_NAME"; then
+          doctl compute droplet create "$VPS_NAME" --image docker-20-04 --size s-1vcpu-1gb --region nyc1 --ssh-keys ${{ secrets.DIGITALOCEAN_SSH_FINGERPRINT }} --wait --user-data-file setup-vps.sh --enable-monitoring
           echo "droplet_created=true" >> $GITHUB_ENV
         else
-          echo "Droplet 'mautic-vps' already exists."
+          echo "Droplet '$VPS_NAME' already exists."
           echo "droplet_created=true" >> $GITHUB_ENV
         fi
+        echo "vps_name=$VPS_NAME" >> $GITHUB_ENV
 
     - name: Get VPS IP
       run: |
+        VPS_NAME="${{ vars.VPS_NAME || 'mautic-vps' }}"
         echo "Waiting for droplet to be ready..."
         while : ; do
           echo "."
           sleep 2
-          STATUS=$(doctl compute droplet get mautic-vps --format Status --no-header)
+          STATUS=$(doctl compute droplet get "$VPS_NAME" --format Status --no-header)
           if [ "$STATUS" = "active" ]; then
-            IP=$(doctl compute droplet get mautic-vps --format PublicIPv4 --no-header)
+            IP=$(doctl compute droplet get "$VPS_NAME" --format PublicIPv4 --no-header)
             if [ -n "$IP" ]; then
               echo "Droplet is active. IP address: $IP"
               break
@@ -116,17 +120,18 @@ jobs:
           exit 1
         fi
 
-    - name: Prepare setup-dc.sh script
+    - name: Prepare environment configuration
       run: |
-        # Replace placeholders in setup-dc.sh
-        sed -i "s/{{IP_ADDRESS}}/${{ env.ip }}/g" setup-dc.sh
-        sed -i "s/{{PORT}}/${{ env.MAUTIC_PORT }}/g" setup-dc.sh
-        sed -i "s/{{EMAIL_ADDRESS}}/${{ env.EMAIL_ADDRESS }}/g" setup-dc.sh
-        sed -i "s/{{MAUTIC_PASSWORD}}/${{ secrets.MAUTIC_PASSWORD }}/g" setup-dc.sh
-        if [ ! -z "${{ env.DOMAIN }}" ]; then
-          sed -i "s/{{DOMAIN_NAME}}/${{ env.DOMAIN }}/g" setup-dc.sh
+        # Create a deployment .env file with all required variables
+        cp .env deploy.env
+        echo "EMAIL_ADDRESS=${{ vars.EMAIL_ADDRESS }}" >> deploy.env
+        echo "MAUTIC_PASSWORD=${{ secrets.MAUTIC_PASSWORD }}" >> deploy.env
+        echo "IP_ADDRESS=${{ env.ip }}" >> deploy.env
+        echo "PORT=${{ env.MAUTIC_PORT }}" >> deploy.env
+        if [ ! -z "${{ vars.DOMAIN }}" ]; then
+          echo "DOMAIN_NAME=${{ vars.DOMAIN }}" >> deploy.env
         fi
-        cat setup-dc.sh # debug
+        cat deploy.env # debug
       env:
         EMAIL_ADDRESS: ${{ vars.EMAIL_ADDRESS }}
         DOMAIN: ${{ vars.DOMAIN }}

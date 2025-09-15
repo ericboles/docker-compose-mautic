@@ -1,10 +1,25 @@
 cd /var/www
+
+# Load environment variables from deploy.env (created by GitHub Actions)
+if [ -f "/var/www/deploy.env" ]; then
+    source /var/www/deploy.env
+    echo "## Environment variables loaded from deploy.env"
+else
+    echo "## Warning: deploy.env not found, using defaults"
+fi
+
 docker compose build
 docker compose up -d db --wait && docker compose up -d mautic_web --wait
 
-echo "## Wait for basic-mautic_web-1 container to be fully running"
-while ! docker exec docker-compose-mautic_mautic_web_1 sh -c 'echo "Container is running"'; do
-    echo "### Waiting for docker-compose-mautic_mautic_web_1 to be fully running..."
+echo "## Detecting mautic_web container name dynamically"
+MAUTIC_WEB_CONTAINER=$(docker ps --format '{{.Names}}' | grep '_mautic_web_1$' || docker ps --format '{{.Names}}' | grep 'mautic_web')
+if [ -z "$MAUTIC_WEB_CONTAINER" ]; then
+    echo "No mautic_web container found. Exiting..."
+    exit 1
+fi
+echo "## Wait for $MAUTIC_WEB_CONTAINER container to be fully running"
+while ! docker exec "$MAUTIC_WEB_CONTAINER" sh -c 'echo "Container is running"'; do
+    echo "### Waiting for $MAUTIC_WEB_CONTAINER to be fully running..."
     sleep 2
 done
 
@@ -13,28 +28,64 @@ if docker compose exec -T mautic_web test -f /var/www/html/config/local.php && d
     echo "## Mautic is installed already."
 else
     # Check if the container exists and is running
-    if docker ps --filter "name=docker-compose-mautic_mautic_worker_1" --filter "status=running" -q | grep -q .; then
-        echo "Stopping docker-compose-mautic_mautic_worker_1 to avoid https://github.com/mautic/docker-mautic/issues/270"
-        docker stop docker-compose-mautic_mautic_worker_1
+    MAUTIC_WORKER_CONTAINER=$(docker ps --format '{{.Names}}' | grep '_mautic_worker_1$' || docker ps --format '{{.Names}}' | grep 'mautic_worker')
+    if [ -n "$MAUTIC_WORKER_CONTAINER" ]; then
+        echo "Stopping $MAUTIC_WORKER_CONTAINER to avoid https://github.com/mautic/docker-mautic/issues/270"
+        docker stop "$MAUTIC_WORKER_CONTAINER"
         echo "## Ensure the worker is stopped before installing Mautic"
-        while docker ps -q --filter name=docker-compose-mautic_mautic_worker_1 | grep -q .; do
-            echo "### Waiting for docker-compose-mautic_mautic_worker_1 to stop..."
+        while docker ps -q --filter name="$MAUTIC_WORKER_CONTAINER" | grep -q .; do
+            echo "### Waiting for $MAUTIC_WORKER_CONTAINER to stop..."
             sleep 2
         done
     else
-        echo "Container docker-compose-mautic_mautic_worker_1 does not exist or is not running."
+        echo "Container $MAUTIC_WORKER_CONTAINER does not exist or is not running."
     fi
     echo "## Installing Mautic..."
-    docker compose exec -T -u www-data -w /var/www/html mautic_web php ./bin/console mautic:install --force --admin_email {{EMAIL_ADDRESS}} --admin_password {{MAUTIC_PASSWORD}} http://{{IP_ADDRESS}}:{{PORT}}
+    docker compose exec -T -u www-data -w /var/www/html mautic_web php ./bin/console mautic:install --force --admin_email "${EMAIL_ADDRESS}" --admin_password "${MAUTIC_PASSWORD}" "http://${IP_ADDRESS}:${PORT}"
+    
+    echo "## Installing custom themes and plugins..."
+    
+    # Install themes
+    if [ ! -z "$MAUTIC_THEMES" ]; then
+        echo "### Processing themes..."
+        IFS=',' read -ra THEME_ARRAY <<< "$MAUTIC_THEMES"
+        for package in "${THEME_ARRAY[@]}"; do
+            package=$(echo "$package" | xargs) # trim whitespace
+            if [ ! -z "$package" ]; then
+                echo "#### Installing theme: $package"
+                docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction || echo "Warning: Failed to install theme $package"
+            fi
+        done
+    else
+        echo "### No themes defined in MAUTIC_THEMES"
+    fi
+    
+    # Install plugins
+    if [ ! -z "$MAUTIC_PLUGINS" ]; then
+        echo "### Processing plugins..."
+        IFS=',' read -ra PLUGIN_ARRAY <<< "$MAUTIC_PLUGINS"
+        for package in "${PLUGIN_ARRAY[@]}"; do
+            package=$(echo "$package" | xargs) # trim whitespace
+            if [ ! -z "$package" ]; then
+                echo "#### Installing plugin: $package"
+                docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction || echo "Warning: Failed to install plugin $package"
+            fi
+        done
+    else
+        echo "### No plugins defined in MAUTIC_PLUGINS"
+    fi
+    
+    echo "## Custom extensions installation completed"
 fi
 
 echo "## Starting all the containers"
 docker compose up -d
 
-DOMAIN="{{DOMAIN_NAME}}"
+# Use DOMAIN_NAME from environment variables
+DOMAIN="$DOMAIN_NAME"
 
-if [[ "$DOMAIN" == *"DOMAIN_NAME"* ]]; then
-    echo "The DOMAIN variable is not set yet."
+if [ -z "$DOMAIN" ]; then
+    echo "The DOMAIN_NAME variable is not set yet."
     exit 0
 fi
 
@@ -79,7 +130,7 @@ fi
 echo "## Configuring Let's Encrypt for $DOMAIN..."
 
 # Use Certbot with the Nginx plugin to obtain and install a certificate
-certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m {{EMAIL_ADDRESS}}
+certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m "$EMAIL_ADDRESS"
 
 # Nginx will be reloaded automatically by Certbot after obtaining the certificate
 echo "## Let's Encrypt configured for $DOMAIN"

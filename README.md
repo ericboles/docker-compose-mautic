@@ -1,6 +1,6 @@
-# Hosting Mautic 5 on a VPS with Docker Compose
+# Hosting Mautic 6 on a VPS with Docker Compose
 
-This is a working example of automate hosting Mautic 5 instance(s) on Virtual Private Server (VPS) on [digitalocean.com](https://m.do.co/c/d0ce234a41be)
+This is a working example of automate hosting Mautic 6 instance(s) on Virtual Private Server (VPS) on [digitalocean.com](https://m.do.co/c/d0ce234a41be)
 
 ## Mautic Conference Global 2024 video about this project
 
@@ -24,7 +24,7 @@ This is a bit different from your normal "execute a bunch of commands" tutorials
 
 It allows you to:
 - Install Mautic within 10 minutes.
-- Upgrade Mautic with 1 line change.
+- Upgrade Mautic with 1 line change in `.env` file.
 - Downgrade with commit revert.
 - Install themes and plugins via Composer.
 - Anyone from your team can do this. Avoid the [Bus Factor](https://en.wikipedia.org/wiki/Bus_factor). GitHub allows you to set rules that someone needs to approve all changes before they are applied.
@@ -65,6 +65,7 @@ The variables are values that is OK to be visible. You can edit the vaule after 
 
 - `EMAIL_ADDRESS` will be used to create a Mautic admin user and you'll use it to log in. It is also used to build the SSL certificates.
 - `DOMAIN` is the domain that will be used to access your Mautic. Do not add it at first. Add it only after you know the VPS IP address and after you've pointed the DNS record to that IP address. If the DOMAIN is unknown, you can still access your new Mautic via the IP address.
+- `VPS_NAME` (optional) - customize the name of your DigitalOcean droplet. Defaults to `mautic-vps` if not set. Useful if you want to run multiple instances or use a custom naming convention.
 
 Example:
 ![Github Actions Variables](https://github.com/escopecz/docker-compose-mautic/assets/1235442/bfc5df49-55b0-4a1d-a8ee-181429bdf244)
@@ -93,7 +94,7 @@ A container is a list or a recipe of commands that needs to be executed to build
 
 **Docker Compose** enables simplified networking between the containers and [1 config file](docker-compose.yml) where all that interconnection is described.
 
-The [docker-compose.yml](docker-compose.yml) in this repository was copied from https://github.com/mautic/docker-mautic/tree/mautic5/examples/basic
+The [docker-compose.yml](docker-compose.yml) in this repository uses the official [Mautic Docker images](https://hub.docker.com/r/mautic/mautic).
 
 ### Containers
 
@@ -123,8 +124,23 @@ Volumes are basically files and directories that are shared between a container 
 
 One of the goals of this deployment is to have a trace of everything related to the Mautic instance configuration. Installing a plugin or a theme can break your Mautic so it's good to have a way to roll back if it happens. And to have a trace of who installed what, when and why is also great to have. Git gives us all that.
 
-In the [Dockerfile](Dockerfile) there is an example of how to install a package. In this case it is a [`chimpino/theme-air`](https://chimpino.com/themes) theme. If you need to install anyting else, you'll just add a new line with the package you need and commit this one line change.
+### Configuration via Environment Variables
 
+Themes and plugins are now configured in the [`.env`](.env) file using environment variables:
+
+```bash
+# Mautic Packages (comma-separated, leave empty if none needed)
+MAUTIC_THEMES=vendor/theme-name:^1.0,another/theme:^2.0
+MAUTIC_PLUGINS=vendor/plugin-name:^1.0,another/plugin:^2.0
+```
+
+### Mautic Version Configuration
+
+You can also configure the Mautic version in the `.env` file:
+
+```bash
+MAUTIC_VERSION=6.0.5-apache
+```
 
 ## Cron jobs
 
