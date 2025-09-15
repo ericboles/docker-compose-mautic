@@ -23,26 +23,6 @@ while ! docker exec "$MAUTIC_WEB_CONTAINER" sh -c 'echo "Container is running"';
     sleep 2
 done
 
-# ---- Added: retry helper for console commands (waits for DB/Doctrine readiness) ----
-retry_cmd() {
-  local i=0
-  local max=10
-  local delay=6
-  while true; do
-    if docker compose exec -T -u www-data -w /var/www/html mautic_web "$@"; then
-      break
-    fi
-    i=$((i+1))
-    if [ "$i" -ge "$max" ]; then
-      echo "Command failed after $max attempts: $*"
-      exit 1
-    fi
-    echo "Waiting for Mautic/DB... retrying ($i/$max)"
-    sleep "$delay"
-  done
-}
-# ---- End added helper ----
-
 echo "## Check if Mautic is installed"
 if docker compose exec -T mautic_web test -f /var/www/html/config/local.php && docker compose exec -T mautic_web grep -q "site_url" /var/www/html/config/local.php; then
     echo "## Mautic is installed already."
@@ -65,7 +45,7 @@ else
     
     echo "## Installing custom themes and plugins..."
     
-    # Install themes (first-time path)
+    # Install themes
     if [ ! -z "$MAUTIC_THEMES" ]; then
         echo "### Processing themes..."
         IFS=',' read -ra THEME_ARRAY <<< "$MAUTIC_THEMES"
@@ -80,7 +60,7 @@ else
         echo "### No themes defined in MAUTIC_THEMES"
     fi
     
-    # Install plugins (first-time path)
+    # Install plugins
     if [ ! -z "$MAUTIC_PLUGINS" ]; then
         echo "### Processing plugins..."
         IFS=',' read -ra PLUGIN_ARRAY <<< "$MAUTIC_PLUGINS"
@@ -97,47 +77,6 @@ else
     
     echo "## Custom extensions installation completed"
 fi
-
-# ---- Added: Always-run ensure/upgrade for themes & plugins, plus cache reload ----
-echo "## Ensuring themes/plugins are installed and up to date"
-# Ensure/upgrade themes
-if [ ! -z "$MAUTIC_THEMES" ]; then
-  echo "### Ensuring themes are installed/up to date..."
-  IFS=',' read -ra THEME_ARRAY <<< "$MAUTIC_THEMES"
-  for package in "${THEME_ARRAY[@]}"; do
-    package=$(echo "$package" | xargs)
-    [ -z "$package" ] && continue
-    echo "#### Installing/updating theme: $package"
-    docker compose exec -T -u www-data -w /var/www/html mautic_web \
-      composer require "$package" --no-scripts --no-interaction || echo "Warning: Failed to install theme $package"
-  done
-else
-  echo "### No themes defined in MAUTIC_THEMES"
-fi
-
-# Ensure/upgrade plugins
-if [ ! -z "$MAUTIC_PLUGINS" ]; then
-  echo "### Ensuring plugins are installed/up to date..."
-  IFS=',' read -ra PLUGIN_ARRAY <<< "$MAUTIC_PLUGINS"
-  for package in "${PLUGIN_ARRAY[@]}"; do
-    package=$(echo "$package" | xargs)
-    [ -z "$package" ] && continue
-    echo "#### Installing/updating plugin: $package"
-    docker compose exec -T -u www-data -w /var/www/html mautic_web \
-      composer require "$package" --no-scripts --no-interaction || echo "Warning: Failed to install plugin $package"
-  done
-
-  # Clear cache & reload plugins with retries (handles DB readiness)
-  retry_cmd php bin/console cache:clear
-  retry_cmd php bin/console mautic:plugins:reload
-
-  # Sanity check for Amazon SES plugin (optional)
-  docker compose exec -T -u www-data -w /var/www/html mautic_web \
-    bash -lc 'test -d vendor/cyberwork/mautic-amazon-ses && echo "Amazon SES plugin present." || echo "Amazon SES plugin not found (yet)."'
-else
-  echo "### No plugins defined in MAUTIC_PLUGINS"
-fi
-# ---- End always-run block ----
 
 echo "## Starting all the containers"
 docker compose up -d
