@@ -1,4 +1,4 @@
-2Test# Hosting Mautic 5 on a VPS with Docker Compose
+# Hosting Mautic 5 on a VPS with Docker Compose
 
 This is a working example of automate hosting Mautic 5 instance(s) on Virtual Private Server (VPS) on [digitalocean.com](https://m.do.co/c/d0ce234a41be)
 
