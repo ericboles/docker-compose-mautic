@@ -70,14 +70,23 @@ if [ ! -z "$MAUTIC_PLUGINS" ]; then
     for package in "${PLUGIN_ARRAY[@]}"; do
         package=$(echo "$package" | xargs) # trim whitespace
         if [ ! -z "$package" ]; then
+            # Extract package name without version constraint
+            package_name=$(echo "$package" | cut -d':' -f1)
+            
+            # Check if plugin is already installed
+            if docker compose exec -T -u www-data -w /var/www/html mautic_web composer show | grep -q "^$package_name "; then
+                echo "✓ Plugin $package_name is already installed, skipping"
+                continue
+            fi
+            
             echo "#### Installing plugin: $package"
             if docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction; then
                 echo "✓ Successfully installed plugin: $package"
                 # Verify installation
-                if docker compose exec -T -u www-data -w /var/www/html mautic_web composer show | grep -q "$package"; then
-                    echo "✓ Plugin $package confirmed in composer packages"
+                if docker compose exec -T -u www-data -w /var/www/html mautic_web composer show | grep -q "$package_name"; then
+                    echo "✓ Plugin $package_name confirmed in composer packages"
                 else
-                    echo "⚠ Plugin $package not found in composer list after installation"
+                    echo "⚠ Plugin $package_name not found in composer list after installation"
                 fi
             else
                 echo "✗ Failed to install plugin: $package"
