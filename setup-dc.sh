@@ -26,7 +26,9 @@ done
 echo "## Check if Mautic is installed"
 if docker compose exec -T mautic_web test -f /var/www/html/config/local.php && docker compose exec -T mautic_web grep -q "site_url" /var/www/html/config/local.php; then
     echo "## Mautic is installed already."
+    MAUTIC_ALREADY_INSTALLED=true
 else
+    MAUTIC_ALREADY_INSTALLED=false
     # Check if the container exists and is running
     MAUTIC_WORKER_CONTAINER=$(docker ps --format '{{.Names}}' | grep '_mautic_worker_1$' || docker ps --format '{{.Names}}' | grep 'mautic_worker')
     if [ -n "$MAUTIC_WORKER_CONTAINER" ]; then
@@ -42,41 +44,41 @@ else
     fi
     echo "## Installing Mautic..."
     docker compose exec -T -u www-data -w /var/www/html mautic_web php ./bin/console mautic:install --force --admin_email "${EMAIL_ADDRESS}" --admin_password "${MAUTIC_PASSWORD}" "http://${IP_ADDRESS}:${PORT}"
-    
-    echo "## Installing custom themes and plugins..."
-    
-    # Install themes
-    if [ ! -z "$MAUTIC_THEMES" ]; then
-        echo "### Processing themes..."
-        IFS=',' read -ra THEME_ARRAY <<< "$MAUTIC_THEMES"
-        for package in "${THEME_ARRAY[@]}"; do
-            package=$(echo "$package" | xargs) # trim whitespace
-            if [ ! -z "$package" ]; then
-                echo "#### Installing theme: $package"
-                docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction || echo "Warning: Failed to install theme $package"
-            fi
-        done
-    else
-        echo "### No themes defined in MAUTIC_THEMES"
-    fi
-    
-    # Install plugins
-    if [ ! -z "$MAUTIC_PLUGINS" ]; then
-        echo "### Processing plugins..."
-        IFS=',' read -ra PLUGIN_ARRAY <<< "$MAUTIC_PLUGINS"
-        for package in "${PLUGIN_ARRAY[@]}"; do
-            package=$(echo "$package" | xargs) # trim whitespace
-            if [ ! -z "$package" ]; then
-                echo "#### Installing plugin: $package"
-                docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction || echo "Warning: Failed to install plugin $package"
-            fi
-        done
-    else
-        echo "### No plugins defined in MAUTIC_PLUGINS"
-    fi
-    
-    echo "## Custom extensions installation completed"
 fi
+
+echo "## Installing custom themes and plugins..."
+
+# Install themes
+if [ ! -z "$MAUTIC_THEMES" ]; then
+    echo "### Processing themes..."
+    IFS=',' read -ra THEME_ARRAY <<< "$MAUTIC_THEMES"
+    for package in "${THEME_ARRAY[@]}"; do
+        package=$(echo "$package" | xargs) # trim whitespace
+        if [ ! -z "$package" ]; then
+            echo "#### Installing theme: $package"
+            docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction || echo "Warning: Failed to install theme $package"
+        fi
+    done
+else
+    echo "### No themes defined in MAUTIC_THEMES"
+fi
+
+# Install plugins
+if [ ! -z "$MAUTIC_PLUGINS" ]; then
+    echo "### Processing plugins..."
+    IFS=',' read -ra PLUGIN_ARRAY <<< "$MAUTIC_PLUGINS"
+    for package in "${PLUGIN_ARRAY[@]}"; do
+        package=$(echo "$package" | xargs) # trim whitespace
+        if [ ! -z "$package" ]; then
+            echo "#### Installing plugin: $package"
+            docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction || echo "Warning: Failed to install plugin $package"
+        fi
+    done
+else
+    echo "### No plugins defined in MAUTIC_PLUGINS"
+fi
+
+echo "## Custom extensions installation completed"
 
 echo "## Starting all the containers"
 docker compose up -d
