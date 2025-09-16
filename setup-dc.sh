@@ -66,6 +66,13 @@ fi
 # Install plugins
 if [ ! -z "$MAUTIC_PLUGINS" ]; then
     echo "### Processing plugins..."
+    
+    # Ensure composer cache directory exists with proper permissions
+    echo "### Setting up Composer cache directory..."
+    docker compose exec -T mautic_web mkdir -p /var/www/.composer/cache
+    docker compose exec -T mautic_web chown -R www-data:www-data /var/www/.composer
+    docker compose exec -T mautic_web chmod -R 755 /var/www/.composer
+    
     IFS=',' read -ra PLUGIN_ARRAY <<< "$MAUTIC_PLUGINS"
     for package in "${PLUGIN_ARRAY[@]}"; do
         package=$(echo "$package" | xargs) # trim whitespace
@@ -80,7 +87,7 @@ if [ ! -z "$MAUTIC_PLUGINS" ]; then
             fi
             
             echo "#### Installing plugin: $package"
-            if docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction; then
+            if docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction --no-cache; then
                 echo "✓ Successfully installed plugin: $package"
                 # Verify installation
                 if docker compose exec -T -u www-data -w /var/www/html mautic_web composer show | grep -q "$package_name"; then
