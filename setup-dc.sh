@@ -71,14 +71,51 @@ if [ ! -z "$MAUTIC_PLUGINS" ]; then
         package=$(echo "$package" | xargs) # trim whitespace
         if [ ! -z "$package" ]; then
             echo "#### Installing plugin: $package"
-            docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction || echo "Warning: Failed to install plugin $package"
+            if docker compose exec -T -u www-data -w /var/www/html mautic_web composer require "$package" --no-scripts --no-interaction; then
+                echo "✓ Successfully installed plugin: $package"
+                # Verify installation
+                if docker compose exec -T -u www-data -w /var/www/html mautic_web composer show | grep -q "$package"; then
+                    echo "✓ Plugin $package confirmed in composer packages"
+                else
+                    echo "⚠ Plugin $package not found in composer list after installation"
+                fi
+            else
+                echo "✗ Failed to install plugin: $package"
+            fi
         fi
     done
+    
+    # Show all installed packages for verification
+    echo "### Current Composer packages:"
+    docker compose exec -T -u www-data -w /var/www/html mautic_web composer show | grep -E "(kuzmany|mautic)" || echo "No kuzmany or mautic packages found"
+    
+    # Clear cache after plugin installation
+    echo "### Clearing Mautic cache..."
+    if docker compose exec -T -u www-data -w /var/www/html mautic_web php ./bin/console cache:clear --no-interaction; then
+        echo "✓ Mautic cache cleared successfully"
+    else
+        echo "⚠ Failed to clear Mautic cache"
+    fi
 else
     echo "### No plugins defined in MAUTIC_PLUGINS"
 fi
 
 echo "## Custom extensions installation completed"
+
+# Final plugin verification
+echo "## Final plugin verification..."
+if [ ! -z "$MAUTIC_PLUGINS" ]; then
+    echo "### Checking if plugins are properly registered in Mautic..."
+    # Check vendor directory for installed packages
+    docker compose exec -T mautic_web find /var/www/html/vendor -name "*amazon*" -type d 2>/dev/null || echo "No amazon-related packages found in vendor"
+    
+    # Check if plugin directories exist
+    docker compose exec -T mautic_web find /var/www/html -name "*Amazon*" -type d 2>/dev/null || echo "No Amazon plugin directories found"
+    
+    # List all composer packages
+    echo "### All installed Composer packages:"
+    docker compose exec -T mautic_web composer show 2>/dev/null | head -20
+fi
 
 echo "## Starting all the containers"
 docker compose up -d
